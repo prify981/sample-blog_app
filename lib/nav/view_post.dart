@@ -20,7 +20,7 @@ class _ViewPostState extends State<ViewPost>
     QueryBuilder<ParseObject> queryPost = QueryBuilder<ParseObject>(
       ParseObject('Post'),
     )
-      ..orderByDescending('createdAt')
+      ..orderByAscending('createdAt')
       ..setLimit(postAmount);
     final ParseResponse apiResponse = await queryPost.query();
 
