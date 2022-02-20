@@ -1,41 +1,129 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+
 import 'package:parse_server_sdk_flutter/parse_server_sdk.dart';
+
+import '../model.dart';
 
 final bucketGlobal = PageStorageBucket();
 
-class ViewPost extends StatefulWidget {
-  const ViewPost({Key? key}) : super(key: key);
+class ListPost extends StatefulWidget {
+  const ListPost({Key? key}) : super(key: key);
 
   @override
-  _ViewPostState createState() => _ViewPostState();
+  _ListPostState createState() => _ListPostState();
 }
 
-class _ViewPostState extends State<ViewPost>
-    with AutomaticKeepAliveClientMixin<ViewPost> {
-  Future<List<ParseObject>>? myFuture;
-  int postAmount = 8;
+class _ListPostState extends State<ListPost> with AutomaticKeepAliveClientMixin<ListPost> {
+  late ScrollController _controller;
 
-  Future<List<ParseObject>> getPost() async {
+  List<Post> posts = [];
+  int postAmount = 6;
+  bool loading = false, allLoaded = false;
+
+  // At the beginning, we fetch the first 20 posts
+  int _page = 0;
+
+  // There is next page or not
+  bool _hasNextPage = true;
+
+  // Used to display loading indicators when _firstLoad function is running
+  bool _isFirstLoadRunning = false;
+
+  // Used to display loading indicators when _loadMore function is running
+  bool _isLoadMoreRunning = false;
+
+  Future getPost() async {
+    if (allLoaded) {
+      return;
+    }
+    setState(() {
+      loading = true;
+    });
     QueryBuilder<ParseObject> queryPost = QueryBuilder<ParseObject>(
       ParseObject('Post'),
     )
       ..orderByDescending('createdAt')
-      ..setLimit(postAmount);
+      ..setLimit(postAmount)
+      ..setAmountToSkip(postAmount);
     final ParseResponse apiResponse = await queryPost.query();
 
     if (apiResponse.success && apiResponse.results != null) {
-      return apiResponse.results as List<ParseObject>;
+      for (final ParseObject t in apiResponse.results!) {
+        print('yes');
+        Post team = Post(
+          post: t.get<String>('post'),
+        );
+        posts.add(team);
+      }
+      print('returning');
+
+      loading = false;
+
+      allLoaded = true;
+      setState(() {});
+      return posts;
     } else {
+      print('nothing here');
       return [];
     }
   }
 
+  void getMeMore() async {
+    setState(() {
+      _isFirstLoadRunning = true;
+    });
+    QueryBuilder<ParseObject> queryPost = QueryBuilder<ParseObject>(
+      ParseObject('Post'),
+    );
+    if (_hasNextPage == true &&
+        _isFirstLoadRunning == false &&
+        _isLoadMoreRunning == false &&
+        _controller.position.pixels >= _controller.position.maxScrollExtent) {
+      setState(() {
+        _isLoadMoreRunning = true; // Display a progress indicator at the bottom
+      });
+      _page += 1;
+
+      queryPost.setAmountToSkip(postAmount);
+      queryPost.setLimit(postAmount);
+      queryPost.orderByDescending('createdAt');
+    }
+    final ParseResponse apiResponse = await queryPost.query();
+
+    if (apiResponse.success && apiResponse.results != null) {
+      for (final ParseObject t in apiResponse.results!) {
+        print('yes');
+        Post team = Post(
+          post: t.get<String>('post'),
+        );
+        print('done looping it');
+        posts.add(team);
+      }
+      print('returning');
+    } else {
+      setState(() {
+        _hasNextPage = false;
+      });
+      print('nothing here');
+    }
+
+    setState(() {
+      _isLoadMoreRunning = false;
+    });
+  }
+
+  @override
   @override
   void initState() {
     super.initState();
-    // initialize();
-    myFuture = getPost();
+    getPost();
+    _controller = new ScrollController()..addListener(getMeMore);
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    _controller.dispose();
   }
 
   @override
@@ -44,83 +132,32 @@ class _ViewPostState extends State<ViewPost>
     return PageStorage(
       bucket: bucketGlobal,
       child: Scaffold(
-        body: Column(
-          children: <Widget>[
-            Expanded(
-                child: FutureBuilder<List<ParseObject>>(
-                    future: myFuture,
-                    builder: (context, snapshot) {
-                      switch (snapshot.connectionState) {
-                        case ConnectionState.none:
-                        case ConnectionState.waiting:
-                          return Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        default:
-                          if (snapshot.hasError) {
-                            return Center(
-                              child: Text("Error..."),
-                            );
-                          }
-                          if (!snapshot.hasData) {
-                            return Center(
-                              child: Text("No post..."),
-                            );
-                          } else {
-                            return RefreshIndicator(
-                              onRefresh: _handleRefresh,
-                              child: ListView.builder(
-                                itemCount: snapshot.data!.length,
-                                itemBuilder: (context, index) {
-                                  final getPost = snapshot.data![index];
-
-                                  final post = getPost.get('post');
-
-                                  return (post != null)
-                                      ? Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.all(8.0),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            5.0),
-                                                    child: Text(
-                                                      '$post',
-                                                      style: TextStyle(
-                                                        wordSpacing: 1,
-                                                        overflow:
-                                                            TextOverflow.clip,
-                                                        fontSize: 16,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  SizedBox(
-                                                    height: 10,
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Divider(
-                                              color: Colors.grey.shade400,
-                                            ),
-                                          ],
-                                        )
-                                      : Container();
-                                },
-                              ),
-                            );
-                          }
-                      }
-                    }))
-          ],
+        body: LayoutBuilder(
+          builder: (context, constraints) {
+            if (posts.isNotEmpty) {
+              print('not empty');
+              return RefreshIndicator(
+                onRefresh: _handleRefresh,
+                child: ListView.builder(
+                  controller: _controller,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  addAutomaticKeepAlives: true,
+                  itemCount: posts.length,
+                  itemBuilder: (context, index) {
+                    final pos = posts[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(pos.post ?? 'empty'),
+                      ),
+                    );
+                  },
+                ),
+              );
+            } else {
+              print('it is empty');
+              return Center(child: CircularProgressIndicator(),);
+            }
+          },
         ),
       ),
     );
@@ -129,7 +166,7 @@ class _ViewPostState extends State<ViewPost>
   Future<Null> _handleRefresh() async {
     await Future.delayed(Duration(seconds: 3)).then((_) {
       setState(() {
-        myFuture = getPost();
+        getPost();
       });
       return null;
     });

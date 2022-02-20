@@ -21,7 +21,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _selectedPageIndex = 0;
 
     _pages = [
-      ViewPost(),
+     ListPost(),
       Write(),
     ];
 
